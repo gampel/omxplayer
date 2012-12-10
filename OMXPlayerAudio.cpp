@@ -365,8 +365,12 @@ bool OMXPlayerAudio::Decode(OMXPacket *pkt)
 
     m_av_clock->SetPTS(m_iCurrentPts);
 
-    const uint8_t *data_dec = pkt->data;
-    int            data_len = pkt->size;
+    //const uint8_t *data_dec = pkt->data;
+    //int            data_len = pkt->size;
+    //eran change the pointer to point to the orignal memory (avoid mem copy)
+    const uint8_t *data_dec = pkt->av_pkt->data;
+    int            data_len = pkt->av_pkt->size;
+
 
     if(!m_passthrough && !m_hw_decode)
     {
@@ -410,9 +414,9 @@ bool OMXPlayerAudio::Decode(OMXPacket *pkt)
     else
     {
       if(m_bMpeg)
-        m_decoder->AddPackets(pkt->data, pkt->size, DVD_NOPTS_VALUE, DVD_NOPTS_VALUE);
+        m_decoder->AddPackets(pkt->av_pkt->data, pkt->av_pkt->size, DVD_NOPTS_VALUE, DVD_NOPTS_VALUE);
       else
-        m_decoder->AddPackets(pkt->data, pkt->size, m_iCurrentPts, m_iCurrentPts);
+        m_decoder->AddPackets(pkt->av_pkt->data, pkt->av_pkt->size, m_iCurrentPts, m_iCurrentPts);
 
       HandleSyncError(0, m_iCurrentPts);
     }

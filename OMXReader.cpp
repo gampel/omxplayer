@@ -422,9 +422,10 @@ AVMediaType OMXReader::PacketType(OMXPacket *pkt)
 
 OMXPacket *OMXReader::Read()
 {
+  AVPacket * pkt =new AVPacket();  
   assert(!IsEof());
   
-  AVPacket  pkt;
+  //AVPacket  pkt;
   OMXPacket *m_omx_pkt = NULL;
   int       result = -1;
 
@@ -438,11 +439,11 @@ OMXPacket *OMXReader::Read()
     m_pFormatContext->pb->eof_reached = 0;
 
   // keep track if ffmpeg doesn't always set these
-  pkt.size = 0;
-  pkt.data = NULL;
-  pkt.stream_index = MAX_OMX_STREAMS;
+  pkt->size = 0;
+  pkt->data = NULL;
+  pkt->stream_index = MAX_OMX_STREAMS;
 
-  result = m_dllAvFormat.av_read_frame(m_pFormatContext, &pkt);
+  result = m_dllAvFormat.av_read_frame(m_pFormatContext, pkt);
   if (result < 0)
   {
     m_eof = true;
@@ -451,7 +452,7 @@ OMXPacket *OMXReader::Read()
     UnLock();
     return NULL;
   }
-  else if (pkt.size < 0 || pkt.stream_index >= MAX_OMX_STREAMS)
+  else if (pkt->size < 0 || pkt->stream_index >= MAX_OMX_STREAMS)
   {
     // XXX, in some cases ffmpeg returns a negative packet size
     if(m_pFormatContext->pb && !m_pFormatContext->pb->eof_reached)
@@ -460,14 +461,14 @@ OMXPacket *OMXReader::Read()
       //FlushRead();
     }
 
-    m_dllAvCodec.av_free_packet(&pkt);
+    m_dllAvCodec.av_free_packet(pkt);
 
     m_eof = true;
     UnLock();
     return NULL;
   }
 
-  AVStream *pStream = m_pFormatContext->streams[pkt.stream_index];
+  AVStream *pStream = m_pFormatContext->streams[pkt->stream_index];
 
   /* only read packets for active streams */
   /*
@@ -482,10 +483,10 @@ OMXPacket *OMXReader::Read()
   // lavf sometimes bugs out and gives 0 dts/pts instead of no dts/pts
   // since this could only happens on initial frame under normal
   // circomstances, let's assume it is wrong all the time
-  if(pkt.dts == 0)
-    pkt.dts = AV_NOPTS_VALUE;
-  if(pkt.pts == 0)
-    pkt.pts = AV_NOPTS_VALUE;
+  if(pkt->dts == 0)
+    pkt->dts = AV_NOPTS_VALUE;
+  if(pkt->pts == 0)
+    pkt->pts = AV_NOPTS_VALUE;
 
   if(m_bMatroska && pStream->codec && pStream->codec->codec_type == AVMEDIA_TYPE_VIDEO)
   { // matroska can store different timestamps
@@ -495,27 +496,32 @@ OMXPacket *OMXReader::Read()
     // sets these two timestamps equal all the
     // time, so we select it here instead
     if(pStream->codec->codec_tag == 0)
-      pkt.dts = AV_NOPTS_VALUE;
+      pkt->dts = AV_NOPTS_VALUE;
     else
-      pkt.pts = AV_NOPTS_VALUE;
+      pkt->pts = AV_NOPTS_VALUE;
   }
   // we need to get duration slightly different for matroska embedded text subtitels
-  if(m_bMatroska && pStream->codec->codec_id == CODEC_ID_TEXT && pkt.convergence_duration != 0)
-    pkt.duration = pkt.convergence_duration;
+  if(m_bMatroska && pStream->codec->codec_id == CODEC_ID_TEXT && pkt->convergence_duration != 0)
+    pkt->duration = pkt->convergence_duration;
 
   if(m_bAVI && pStream->codec && pStream->codec->codec_type == AVMEDIA_TYPE_VIDEO)
   {
     // AVI's always have borked pts, specially if m_pFormatContext->flags includes
     // AVFMT_FLAG_GENPTS so always use dts
-    pkt.pts = AV_NOPTS_VALUE;
+    pkt->pts = AV_NOPTS_VALUE;
   }
+/*
+  if(  pStream->codec->codec_type == AVMEDIA_TYPE_AUDIO)
+  {  
+     printf ( "$$$$$$ Read AUDIO PACKET PTS %ld DTS %ld \n", pkt->pts,pkt->dts);
 
-  m_omx_pkt = AllocPacket(pkt.size);
+  }*/
+  m_omx_pkt = AllocPacket(pkt->size);
   /* oom error allocation av packet */
   if(!m_omx_pkt)
   {
     m_eof = true;
-    m_dllAvCodec.av_free_packet(&pkt);
+    m_dllAvCodec.av_free_packet(pkt);
     UnLock();
     return NULL;
   }
@@ -523,29 +529,30 @@ OMXPacket *OMXReader::Read()
   m_omx_pkt->codec_type = pStream->codec->codec_type;
 
   /* copy content into our own packet */
-  m_omx_pkt->size = pkt.size;
+  m_omx_pkt->size = pkt->size;
 
-  if (pkt.data)
-    memcpy(m_omx_pkt->data, pkt.data, m_omx_pkt->size);
+  if (pkt->data)
+	m_omx_pkt->av_pkt = pkt ;  
+  //  memcpy(m_omx_pkt->data, pkt.data, m_omx_pkt->size);
 
-  m_omx_pkt->stream_index = pkt.stream_index;
+  m_omx_pkt->stream_index = pkt->stream_index;
   GetHints(pStream, &m_omx_pkt->hints);
 
   //m_omx_pkt->dts = ConvertTimestamp(pkt.dts, pStream->time_base.den, pStream->time_base.num);
   //m_omx_pkt->pts = ConvertTimestamp(pkt.pts, pStream->time_base.den, pStream->time_base.num);
-  m_omx_pkt->dts = ConvertTimestamp(pkt.dts, &pStream->time_base);
-  m_omx_pkt->pts = ConvertTimestamp(pkt.pts, &pStream->time_base);
-  m_omx_pkt->duration = DVD_SEC_TO_TIME((double)pkt.duration * pStream->time_base.num / pStream->time_base.den);
+  m_omx_pkt->dts = ConvertTimestamp(pkt->dts, &pStream->time_base);
+  m_omx_pkt->pts = ConvertTimestamp(pkt->pts, &pStream->time_base);
+  m_omx_pkt->duration = DVD_SEC_TO_TIME((double)pkt->duration * pStream->time_base.num / pStream->time_base.den);
 
   // used to guess streamlength
   if (m_omx_pkt->dts != DVD_NOPTS_VALUE && (m_omx_pkt->dts > m_iCurrentPts || m_iCurrentPts == DVD_NOPTS_VALUE))
     m_iCurrentPts = m_omx_pkt->dts;
 
   // check if stream has passed full duration, needed for live streams
-  if(pkt.dts != (int64_t)AV_NOPTS_VALUE)
+  if(pkt->dts != (int64_t)AV_NOPTS_VALUE)
   {
     int64_t duration;
-    duration = pkt.dts;
+    duration = pkt->dts;
     if(pStream->start_time != (int64_t)AV_NOPTS_VALUE)
       duration -= pStream->start_time;
 
@@ -560,7 +567,7 @@ OMXPacket *OMXReader::Read()
     }
   }
 
-  m_dllAvCodec.av_free_packet(&pkt);
+//  m_dllAvCodec.av_free_packet(pkt);
 
   UnLock();
   return m_omx_pkt;
@@ -927,6 +934,12 @@ void OMXReader::FreePacket(OMXPacket *pkt)
   {
     if(pkt->data)
       free(pkt->data);
+   if (pkt->av_pkt)
+   {
+    av_free_packet(pkt->av_pkt);
+    free (pkt->av_pkt);
+   }
+ 
     free(pkt);
   }
 }
@@ -938,15 +951,15 @@ OMXPacket *OMXReader::AllocPacket(int size)
   {
     memset(pkt, 0, sizeof(OMXPacket));
 
-    pkt->data = (uint8_t*) malloc(size + FF_INPUT_BUFFER_PADDING_SIZE);
-    if(!pkt->data)
+    //pkt->data = (uint8_t*) malloc(size + FF_INPUT_BUFFER_PADDING_SIZE);
+   /* if(!pkt->data)
     {
       free(pkt);
       pkt = NULL;
-    }
-    else
+    }*/
+    //else
     {
-      memset(pkt->data + size, 0, FF_INPUT_BUFFER_PADDING_SIZE);
+      //memset(pkt->data + size, 0, FF_INPUT_BUFFER_PADDING_SIZE);
       pkt->size = size;
       pkt->dts  = DVD_NOPTS_VALUE;
       pkt->pts  = DVD_NOPTS_VALUE;

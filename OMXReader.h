@@ -82,6 +82,7 @@ typedef struct OMXPacket
   int       stream_index;
   COMXStreamInfo hints;
   enum AVMediaType codec_type;
+  AVPacket  *av_pkt; //Eran add 
 } OMXPacket;
 
 enum OMXStreamType

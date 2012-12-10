@@ -363,9 +363,9 @@ bool OMXPlayerVideo::Decode(OMXPacket *pkt)
   else if((unsigned long)m_decoder->GetFreeSpace() > pkt->size)
   {
     if(m_bMpeg)
-      m_decoder->Decode(pkt->data, pkt->size, DVD_NOPTS_VALUE, DVD_NOPTS_VALUE);
+      m_decoder->Decode(pkt->av_pkt->data, pkt->av_pkt->size, DVD_NOPTS_VALUE, DVD_NOPTS_VALUE);
     else
-      m_decoder->Decode(pkt->data, pkt->size, m_pts, m_pts);
+      m_decoder->Decode(pkt->av_pkt->data, pkt->av_pkt->size, m_pts, m_pts);
 
     m_av_clock->SetVideoClock(m_pts);
 
